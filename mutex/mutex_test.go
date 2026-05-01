@@ -20,11 +20,15 @@ func TestThreadSafe(t *testing.T) {
 
 	wg.Wait()
 
-	got := counter.Value()
 	want := 1000
 
-	if got != want {
-		t.Errorf("got: %d\n want: %d\n", got, want)
-	}
+	AssertCounter(t, &counter, want)
 
+}
+
+func AssertCounter(t *testing.T, got *Counter, want int) {
+	t.Helper()
+	if got.Value() != want {
+		t.Errorf("got: %d\n want: %d\n", got.Value(), want)
+	}
 }
