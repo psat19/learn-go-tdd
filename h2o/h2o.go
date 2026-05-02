@@ -6,69 +6,66 @@ import (
 )
 
 type H2O struct {
-	// TODO: add synchronization primitives
-	// e.g., mutex, condition variable, channels, semaphores (via buffered channels)
-	cond    sync.Cond
-	counter int
+	mu     sync.Mutex
+	cond   *sync.Cond
+	hCount int
+	hStep  int
+	oCount int
+	oStep  int
 }
 
-type Locker struct {
-	mu sync.Mutex
+func (b *H2O) AwaitHydrogen() {
+	b.mu.Lock()
+
+	for b.hStep == 0 {
+		b.cond.Wait()
+	}
+
+	b.hCount++
+	b.hStep--
+	b.tryTrip()
+
+	b.mu.Unlock()
 }
 
-func (l *Locker) Lock() {
-	l.mu.Lock()
+func (b *H2O) AwaitOxygen() {
+	b.mu.Lock()
+
+	b.mu.Unlock()
 }
 
-func (l *Locker) Unlock() {
-	l.mu.Unlock()
+func (b *H2O) tryTrip() {
+	if b.hCount >= 2 && b.oCount >= 1 {
+		b.hCount -= 2
+		b.oCount -= 1
+		b.hStep += 2
+		b.oStep += 1
+		b.cond.Broadcast()
+	}
 }
 
 func NewH2O() *H2O {
-	return &H2O{
-		*sync.NewCond(&Locker{sync.Mutex{}}),
-		0,
-	}
+	h2o := &H2O{}
+	h2o.cond = sync.NewCond(&h2o.mu)
+
+	return h2o
 }
 
 func (h2o *H2O) Hydrogen(releaseHydrogen func()) {
-	h2o.cond.L.Lock()
-
-	for h2o.counter >= 2 {
-		h2o.cond.Wait()
-	}
-
+	h2o.AwaitHydrogen()
 	releaseHydrogen()
-
-	h2o.counter++
-
-	h2o.cond.L.Unlock()
-	h2o.cond.Broadcast()
 }
 
 func (h2o *H2O) Oxygen(releaseOxygen func()) {
-	h2o.cond.L.Lock()
-
-	for h2o.counter < 2 {
-		h2o.cond.Wait()
-	}
-
+	h2o.AwaitOxygen()
 	releaseOxygen()
-
-	h2o.counter++
-	if h2o.counter >= 2 {
-		h2o.counter = 0
-	}
-
-	h2o.cond.L.Unlock()
-	h2o.cond.Broadcast()
 }
 
 func main() {
 	h2o := NewH2O()
 	var wg sync.WaitGroup
 
-	input := "OOHHHH" // try different combinations
+	input := "HHHHOO" // try different combinations
 
 	for _, ch := range input {
 		wg.Add(1)

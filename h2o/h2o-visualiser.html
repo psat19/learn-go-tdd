@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>H2O Barrier Algorithm</title>
+<style>
+:root {
+  --bg:#0d1117; --surface:#161b22; --border:#30363d; --text:#e6edf3;
+  --muted:#8b949e; --blue:#58a6ff; --blue-bg:#1f6feb;
+  --red:#f87171; --red-bg:#b91c1c; --green:#3fb950;
+  --orange:#f0883e; --yellow:#d29922;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Courier New',monospace;background:var(--bg);color:var(--text);
+  min-height:100vh;padding:24px;max-width:960px;margin:0 auto}
+h1{color:var(--blue);font-size:1.4rem;margin-bottom:4px}
+.sub{color:var(--muted);font-size:0.78rem;margin-bottom:20px}
+
+.grid{display:grid;grid-template-columns:1fr 270px;gap:14px;margin-bottom:14px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px}
+.card-title{font-size:0.68rem;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:12px}
+
+/* zones */
+.zone{min-height:54px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;
+  padding:8px;background:var(--bg);border-radius:6px;border:1px solid #21262d}
+.zlabel{font-size:.7rem;color:var(--muted);margin-bottom:4px}
+.barrier-line{text-align:center;color:var(--red);font-size:.7rem;letter-spacing:.25em;
+  padding:6px 0;margin:10px 0;border-top:1px dashed var(--red);border-bottom:1px dashed var(--red)}
+
+/* atoms */
+.atom{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;
+  justify-content:center;font-weight:bold;font-size:1rem;transition:transform .2s}
+.atom.H{background:var(--blue-bg);border:2px solid var(--blue)}
+.atom.O{background:var(--red-bg);border:2px solid var(--red)}
+.atom-pop{animation:pop .3s ease}
+@keyframes pop{0%,100%{transform:scale(1)}50%{transform:scale(1.45)}}
+
+/* state panel */
+.sg{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.sb{background:var(--bg);border-radius:6px;padding:8px 12px;border:1px solid #21262d}
+.sb.full{grid-column:1/-1}
+.sl{font-size:.62rem;color:var(--muted);text-transform:uppercase}
+.sv{font-size:1.55rem;font-weight:bold;color:var(--blue);line-height:1.2}
+.sb.flash{animation:sbflash .45s ease}
+@keyframes sbflash{50%{border-color:var(--orange);box-shadow:0 0 8px var(--orange)}}
+
+/* trip */
+.trip{padding:8px 12px;border-radius:6px;font-size:.73rem;text-align:center;transition:all .3s}
+.trip.unmet{background:var(--bg);border:1px solid var(--border);color:var(--muted)}
+.trip.met{background:#0d2119;border:1px solid var(--green);color:var(--green)}
+.trip.fired{animation:tflash .7s ease;border:1px solid var(--orange);color:var(--orange)}
+@keyframes tflash{0%,100%{background:var(--bg)}50%{background:#2d1b0e}}
+
+/* step dots */
+.step-row{display:flex;gap:8px;justify-content:center;margin-top:12px;align-items:center}
+.dot{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;
+  justify-content:center;font-weight:bold;font-size:.82rem;transition:all .3s}
+.dot.H{background:var(--blue-bg);border:2px solid var(--blue)}
+.dot.O{background:var(--red-bg);border:2px solid var(--red)}
+.dot.done{opacity:.22}
+.dot.active{box-shadow:0 0 14px var(--blue);transform:scale(1.18)}
+.arrow{color:var(--muted);font-size:.75rem}
+
+/* molecules */
+.mol-row{display:flex;flex-wrap:wrap;gap:10px;min-height:44px}
+.molecule{display:flex;gap:4px;align-items:center;background:#0d2119;
+  border:1px solid var(--green);border-radius:8px;padding:6px 10px;
+  animation:popin .35s ease}
+@keyframes popin{from{opacity:0;transform:scale(.7)}to{opacity:1;transform:scale(1)}}
+.ma{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;
+  justify-content:center;font-size:.68rem;font-weight:bold}
+.ma.H{background:var(--blue-bg);border:1px solid var(--blue)}
+.ma.O{background:var(--red-bg);border:1px solid var(--red)}
+
+/* controls */
+.ctrl{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+button{padding:7px 15px;border-radius:6px;border:1px solid var(--border);
+  background:#21262d;color:var(--text);cursor:pointer;font-family:inherit;
+  font-size:.8rem;transition:background .2s,border-color .2s}
+button:hover:not(:disabled){background:#30363d;border-color:var(--blue)}
+button.hb{border-color:var(--blue);color:var(--blue)}
+button.ob{border-color:var(--red);color:var(--red)}
+button:disabled{opacity:.35;cursor:not-allowed}
+.spd{display:flex;align-items:center;gap:8px;font-size:.73rem;color:var(--muted);margin-bottom:14px}
+input[type=range]{accent-color:var(--blue)}
+
+/* log */
+.log{background:var(--bg);border:1px solid #21262d;border-radius:6px;
+  height:130px;overflow-y:auto;padding:8px 10px}
+.le{padding:1px 0;font-size:.73rem;border-bottom:1px solid #1c1c1c}
+.le.info{color:var(--muted)}
+.le.trip{color:var(--orange);font-weight:bold}
+.le.slot{color:var(--yellow)}
+.le.rel{color:var(--green)}
+.le.mol{color:var(--green);font-weight:bold}
+</style>
+</head>
+<body>
+<h1>H₂O Barrier Algorithm</h1>
+<p class="sub">Phase 1 — slot barrier: 2H+1O must all arrive before any proceeds &nbsp;|&nbsp; Phase 2 — step ordering: H → H → O</p>
+
+<div class="grid">
+  <div class="card">
+    <div class="card-title">Atom Zones</div>
+    <div class="zlabel">Waiting at barrier</div>
+    <div class="zone" id="z-wait"></div>
+    <div class="barrier-line">━━━━━━━ B A R R I E R ━━━━━━━</div>
+    <div class="zlabel">Ordering — has slot, waiting for step turn</div>
+    <div class="zone" id="z-order"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Algorithm State</div>
+    <div class="sg">
+      <div class="sb" id="sb-hCount"><div class="sl">hCount</div><div class="sv" id="sv-hCount">0</div></div>
+      <div class="sb" id="sb-oCount"><div class="sl">oCount</div><div class="sv" id="sv-oCount">0</div></div>
+      <div class="sb" id="sb-hSlots"><div class="sl">hSlots</div><div class="sv" id="sv-hSlots">0</div></div>
+      <div class="sb" id="sb-oSlots"><div class="sl">oSlots</div><div class="sv" id="sv-oSlots">0</div></div>
+      <div class="sb full" id="sb-step"><div class="sl">step &nbsp; 0=first H &nbsp; 1=second H &nbsp; 2=O</div><div class="sv" id="sv-step">0</div></div>
+    </div>
+    <div class="trip unmet" id="trip">tryTrip: waiting for hCount≥2 AND oCount≥1</div>
+    <div class="step-row" id="step-row"></div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:14px">
+  <div class="card-title">Molecules released</div>
+  <div class="mol-row" id="mol-row"></div>
+</div>
+
+<div class="ctrl">
+  <button class="hb" id="btn-h" onclick="handleAdd('H')">＋ H atom</button>
+  <button class="ob" id="btn-o" onclick="handleAdd('O')">＋ O atom</button>
+  <button id="ba1" onclick="runAuto('HHHHOO')">▶ HHHHOO</button>
+  <button id="ba2" onclick="runAuto('OOHHHH')">▶ OOHHHH</button>
+  <button id="ba3" onclick="runAuto('HOHHOHHOH')">▶ HOHHOHHOH</button>
+  <button onclick="doReset()">↺ Reset</button>
+</div>
+<div class="spd">
+  Speed:
+  <input type="range" id="spd" min="1" max="5" value="3" style="width:90px">
+  <span id="spd-lbl">Normal</span>
+</div>
+
+<div class="card">
+  <div class="card-title">Event log</div>
+  <div class="log" id="log"></div>
+</div>
+
+<script>
+// ── State (mirrors Go struct) ────────────────────────────────────────────
+let s = { hCount:0, oCount:0, hSlots:0, oSlots:0, step:0, atoms:[], nextId:0, busy:false };
+
+const SPEEDS = {1:900, 2:550, 3:300, 4:130, 5:40};
+const SPD_NAMES = {1:'Slow', 2:'Medium', 3:'Normal', 4:'Fast', 5:'Instant'};
+const $ = id => document.getElementById(id);
+const delay = ms => new Promise(r => setTimeout(r, ms));
+const D = (f=1) => SPEEDS[+$('spd').value] * f;
+
+$('spd').oninput = e => $('spd-lbl').textContent = SPD_NAMES[e.target.value];
+
+// ── Core algorithm — exact Go translation ────────────────────────────────
+function tryTrip() {
+  if (s.hCount >= 2 && s.oCount >= 1) {
+    s.hCount -= 2;
+    s.oCount -= 1;
+    s.hSlots += 2;
+    s.oSlots += 1;
+    return true;
+  }
+  return false;
+}
+
+// ── Simulation steps ─────────────────────────────────────────────────────
+async function addAtom(type) {
+  const atom = { id: s.nextId++, type, zone: 'wait' };
+  s.atoms.push(atom);
+  if (type === 'H') s.hCount++; else s.oCount++;
+  log(`${type} arrived — hCount:${s.hCount} oCount:${s.oCount}`, 'info');
+  render(); await delay(D());
+
+  if (tryTrip()) {
+    log(`⚡ tryTrip fired → hSlots:${s.hSlots} oSlots:${s.oSlots}`, 'trip');
+    const t = $('trip');
+    t.className = 'trip fired';
+    t.textContent = '⚡ tryTrip fired — slots granted!';
+    render(); await delay(D(1.1));
+  }
+
+  await claimSlots();
+}
+
+async function claimSlots() {
+  let more = true;
+  while (more) {
+    more = false;
+    while (s.hSlots > 0) {
+      const h = s.atoms.find(a => a.type==='H' && a.zone==='wait');
+      if (!h) break;
+      h.zone = 'order'; s.hSlots--;
+      log(`H claimed slot — hSlots left: ${s.hSlots}`, 'slot');
+      render(); await delay(D(.7));
+      more = true;
+    }
+    while (s.oSlots > 0) {
+      const o = s.atoms.find(a => a.type==='O' && a.zone==='wait');
+      if (!o) break;
+      o.zone = 'order'; s.oSlots--;
+      log(`O claimed slot — oSlots left: ${s.oSlots}`, 'slot');
+      render(); await delay(D(.7));
+      more = true;
+    }
+    if (await drainOrdering()) more = true;
+  }
+}
+
+async function drainOrdering() {
+  let changed = false;
+  while (s.step < 2) {
+    const h = s.atoms.find(a => a.type==='H' && a.zone==='order');
+    if (!h) break;
+    const prev = s.step;
+    h.zone = 'done'; s.step++;
+    log(`H released (step ${prev} → ${s.step})`, 'rel');
+    render(); await delay(D());
+    changed = true;
+  }
+  if (s.step === 2) {
+    const o = s.atoms.find(a => a.type==='O' && a.zone==='order');
+    if (o) {
+      o.zone = 'done'; s.step = 0;
+      log(`O released — step reset to 0 — 💧 molecule complete!`, 'mol');
+      addMoleculeCard();
+      render(); await delay(D());
+      changed = true;
+      await drainOrdering();
+    }
+  }
+  return changed;
+}
+
+function addMoleculeCard() {
+  const row = $('mol-row');
+  const mol = document.createElement('div');
+  mol.className = 'molecule';
+  ['H','H','O'].forEach(t => {
+    const a = document.createElement('div');
+    a.className = `ma ${t}`;
+    a.textContent = t;
+    mol.appendChild(a);
+  });
+  const lbl = document.createElement('span');
+  lbl.style.cssText = 'font-size:.85rem;margin-left:4px';
+  lbl.textContent = '💧';
+  mol.appendChild(lbl);
+  row.appendChild(mol);
+}
+
+// ── Controls ──────────────────────────────────────────────────────────────
+async function handleAdd(type) {
+  if (s.busy) return;
+  s.busy = true; setBtns(true);
+  await addAtom(type);
+  s.busy = false; setBtns(false);
+}
+
+async function runAuto(input) {
+  if (s.busy) return;
+  s.busy = true; setBtns(true);
+  for (const ch of input) {
+    await addAtom(ch);
+    await delay(D(.4));
+  }
+  s.busy = false; setBtns(false);
+}
+
+function doReset() {
+  s = { hCount:0, oCount:0, hSlots:0, oSlots:0, step:0, atoms:[], nextId:0, busy:false };
+  $('log').innerHTML = '';
+  $('mol-row').innerHTML = '';
+  setBtns(false);
+  render();
+}
+
+function setBtns(dis) {
+  ['btn-h','btn-o','ba1','ba2','ba3'].forEach(id => $(id).disabled = dis);
+}
+
+// ── Rendering ─────────────────────────────────────────────────────────────
+function render() {
+  // State boxes
+  ['hCount','oCount','hSlots','oSlots','step'].forEach(k => {
+    const el = $(`sv-${k}`), box = $(`sb-${k}`);
+    if (el && String(el.textContent) !== String(s[k])) {
+      el.textContent = s[k];
+      box.classList.remove('flash');
+      void box.offsetWidth;
+      box.classList.add('flash');
+    }
+  });
+
+  // Trip indicator (only update if not mid-animation)
+  const t = $('trip');
+  if (!t.className.includes('fired')) {
+    if (s.hCount >= 2 && s.oCount >= 1) {
+      t.className = 'trip met';
+      t.textContent = `✓ condition met — hCount:${s.hCount}≥2 AND oCount:${s.oCount}≥1`;
+    } else {
+      t.className = 'trip unmet';
+      t.textContent = `tryTrip: need hCount≥2 (=${s.hCount}) AND oCount≥1 (=${s.oCount})`;
+    }
+  } else {
+    // let animation play out, then reset
+    setTimeout(() => { t.className = ''; render(); }, 750);
+  }
+
+  // Step dots
+  const sr = $('step-row');
+  sr.innerHTML = '';
+  ['H','H','O'].forEach((t, i) => {
+    if (i > 0) {
+      const a = document.createElement('span');
+      a.className = 'arrow'; a.textContent = '→'; sr.appendChild(a);
+    }
+    const d = document.createElement('div');
+    d.className = `dot ${t}`;
+    if (i < s.step) { d.classList.add('done'); d.textContent = '✓'; }
+    else if (i === s.step) { d.classList.add('active'); d.textContent = t; }
+    else { d.textContent = t; d.style.opacity = '.35'; }
+    sr.appendChild(d);
+  });
+
+  // Zones
+  syncZone('z-wait', 'wait');
+  syncZone('z-order', 'order');
+}
+
+function syncZone(elId, zone) {
+  const el = $(elId);
+  const atoms = s.atoms.filter(a => a.zone === zone);
+  // remove stale
+  [...el.children].forEach(ch => {
+    if (!atoms.find(a => a.id === +ch.dataset.id)) ch.remove();
+  });
+  // add new
+  atoms.forEach(atom => {
+    if (!el.querySelector(`[data-id="${atom.id}"]`)) {
+      const div = document.createElement('div');
+      div.className = `atom ${atom.type} atom-pop`;
+      div.dataset.id = atom.id;
+      div.textContent = atom.type;
+      div.title = `#${atom.id}`;
+      el.appendChild(div);
+    }
+  });
+}
+
+function log(msg, type='info') {
+  const logEl = $('log');
+  const le = document.createElement('div');
+  le.className = `le ${type}`;
+  le.textContent = '› ' + msg;
+  logEl.appendChild(le);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+render();
+</script>
+</body>
+</html>
